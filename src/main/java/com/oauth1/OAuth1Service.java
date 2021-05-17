@@ -1,5 +1,7 @@
 package com.oauth1;
 
+import org.apache.commons.codec.digest.HmacAlgorithms;
+import org.apache.commons.codec.digest.HmacUtils;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
 
@@ -14,12 +16,24 @@ import java.util.stream.Collectors;
 
 public class OAuth1Service {
 
-    public String buildSignature(HttpRequest request, String consumerKey, String consumerSecret, String accessToken, String tokenSecret) {
-        return null;
+    public String buildSignature(HttpRequest request, String consumerKey, String consumerSecret, String token, String tokenSecret) {
+        String baseString =  generateBaseString(request, consumerKey, token);
+        System.out.print(baseString);
+        String secret = percentEncode(consumerSecret) + "&" + percentEncode(tokenSecret);
+        return new String(new HmacUtils(HmacAlgorithms.HMAC_SHA_1, secret.getBytes()).hmac(baseString.getBytes()), StandardCharsets.UTF_8);
     }
 
-    private String generateBaseString(HttpRequest request, String consumerKey, String accessToken) {
-        List<Param> params = getStandardOAuthParams(consumerKey);
+    private String generateBaseString(HttpRequest request, String consumerKey, String token) {
+        String paramString = URLEncoder.encode(generateParameterString(request, consumerKey, token)).replace("+", "%20");
+        String method = request.getMethod().name();
+        // this should be just base url
+        String url = URLEncoder.encode(request.getUrl(), StandardCharsets.UTF_8).replace("+", "%20");
+
+        return method + "&" + url + "&" + paramString;
+    }
+
+    private String generateParameterString(HttpRequest request, String consumerKey, String token) {
+        List<Param> params = getStandardOAuthParams(consumerKey, token);
 
         // extract url params
         List<Param> queryParams = getQueryParams(request);
@@ -29,25 +43,27 @@ public class OAuth1Service {
         params.addAll(bodyParams);
 
         // first, url encode each key-value pair
-        params = params.stream().map(param -> new Param(URLEncoder.encode(param.getName(), StandardCharsets.UTF_8),
-                URLEncoder.encode(String.valueOf(param.getValue()), StandardCharsets.UTF_8)))
+        params = params.stream().map(param -> new Param(URLEncoder.encode(param.getName(), StandardCharsets.UTF_8).replace("+", "%20"),
+                URLEncoder.encode(String.valueOf(param.getValue()), StandardCharsets.UTF_8).replace("+", "%20")))
                 .collect(Collectors.toList());
         // sort the params
         params = params.stream().sorted().collect(Collectors.toList());
 
-        String baseString = params.stream().map(param -> param.getName() + "=" + param.getValue()).collect(Collectors.joining("&"));
-
-        return baseString;
+        return params.stream().map(param -> param.getName() + "=" + param.getValue()).collect(Collectors.joining("&"));
     }
 
-    private List<Param> getStandardOAuthParams(String consumerKey) {
+    private List<Param> getStandardOAuthParams(String consumerKey, String token) {
         List<Param> params = new ArrayList<>();
         params.add(new Param("oauth_consumer_key", consumerKey));
         params.add(new Param("oauth_nonce", UUID.randomUUID().toString()));
         params.add(new Param("oauth_signature_method", "HMAC-SHA1"));
-        params.add(new Param("oauth_timestamp", Instant.now().getEpochSecond()));
-        //params.put("oauth_token", consumerKey);
-        params.add(new Param("oauth_version", 1.0));
+        params.add(new Param("oauth_timestamp", String.valueOf(Instant.now().getEpochSecond())));
+        params.add(new Param("oauth_version", "1.0"));
+
+        if (token != null) {
+            params.add(new Param("oauth_token", token));
+        }
+
         return params;
     }
 
@@ -86,5 +102,9 @@ public class OAuth1Service {
             params.add(new Param(decodedName, decodedValue));
         }
         return params;
+    }
+
+    private String percentEncode(String toEncode) {
+        return URLEncoder.encode(toEncode, StandardCharsets.UTF_8).replace("+", "%20");
     }
 }
