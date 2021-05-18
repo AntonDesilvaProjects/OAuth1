@@ -10,10 +10,83 @@ import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class OAuth1Service {
+
+    public List<Param> generateOAuthParams(HttpRequest request,
+                                           String consumerKey, String consumerSecret,
+                                           String token, String tokenSecret,
+                                           List<Param> customParams) {
+        // first generate the standard params
+        List<Param> params = new ArrayList<>(Optional.ofNullable(customParams).orElse(new ArrayList<>()));
+        params.add(new Param("oauth_consumer_key", consumerKey));
+        params.add(new Param("oauth_nonce", UUID.randomUUID().toString()));
+        params.add(new Param("oauth_signature_method", "HMAC-SHA1"));
+        params.add(new Param("oauth_timestamp", String.valueOf(Instant.now().getEpochSecond())));
+        params.add(new Param("oauth_version", "1.0"));
+
+        // we might not always a oauth_token(e.g. during the Request Token call) so set if available
+        if (token != null) {
+            params.add(new Param("oauth_token", token));
+        }
+
+        // use all of the above params to build the signature
+        final String method = request.getMethod().name();
+        final String url = percentEncode(getUrlWithoutQueryParams(request.getUrl()));
+        final String paramString = percentEncode(generateParameterString(request, params));
+        final String baseString = method.concat("&").concat(url).concat("&").concat(paramString);
+
+        final String secret = percentEncode(consumerSecret) + "&" + percentEncode(tokenSecret == null ? "" : tokenSecret);
+        final byte[] signatureBytes = new HmacUtils(HmacAlgorithms.HMAC_SHA_1, secret.getBytes()).hmac(baseString.getBytes());
+        final String signature = Base64.getEncoder().encodeToString(signatureBytes);
+
+        params.add(new Param("oauth_signature", signature));
+
+        return params;
+    }
+
+    public String buildAuthorizationHeader(HttpRequest request,
+                                           String consumerKey, String consumerSecret,
+                                           String token, String tokenSecret,
+                                           List<Param> customParams) {
+        final List<Param> params = generateOAuthParams(request, consumerKey, consumerSecret, token, tokenSecret, customParams);
+        return "OAuth " + params.stream()
+                .map(param -> percentEncode(param.getName())
+                        .concat("=")
+                        .concat("\"")
+                            .concat(percentEncode(param.getValue()))
+                        .concat("\""))
+                .collect(Collectors.joining(", "));
+    }
+
+
+    private String generateParameterString(HttpRequest request, List<Param> params) {
+        List<Param> paramsList = new ArrayList<>(params);
+
+        // extract url params
+        List<Param> queryParams = getQueryParams(request);
+        paramsList.addAll(queryParams);
+
+        // extract any form URL encode values from body
+        List<Param> bodyParams = getBodyParams(request);
+        paramsList.addAll(bodyParams);
+
+        // url encode each key-value pair
+        paramsList = paramsList.stream()
+                .map(param -> new Param(percentEncode(param.getName()), percentEncode(param.getValue())))
+                .collect(Collectors.toList());
+
+        // sort the params lexicographically
+        paramsList = paramsList.stream().sorted().collect(Collectors.toList());
+
+        // join all params
+        return paramsList.stream()
+                .map(param -> param.getName() + "=" + param.getValue())
+                .collect(Collectors.joining("&"));
+    }
 
     public String buildSignature(HttpRequest request, String consumerKey, String consumerSecret, String token, String tokenSecret) {
         String baseString = generateBaseString(request, consumerKey, token);
@@ -24,7 +97,7 @@ public class OAuth1Service {
 
     private String generateBaseString(HttpRequest request, String consumerKey, String token) {
         String method = request.getMethod().name();
-        String url = percentEncode(getUrlWithoutParameters(request.getUrl()));
+        String url = percentEncode(getUrlWithoutQueryParams(request.getUrl()));
         String paramString = percentEncode(generateParameterString(request, consumerKey, token));
         return method.concat("&").concat(url).concat("&").concat(paramString);
     }
@@ -117,7 +190,7 @@ public class OAuth1Service {
                 .replace("+", "%20");
     }
 
-    private String getUrlWithoutParameters(String url) {
+    private String getUrlWithoutQueryParams(String url) {
         try {
             URI uri = new URI(url);
             return new URI(uri.getScheme(),

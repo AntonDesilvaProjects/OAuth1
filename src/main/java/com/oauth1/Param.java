@@ -49,4 +49,12 @@ public class Param implements Comparable<Param> {
     public int hashCode() {
         return Objects.hash(getName(), getValue());
     }
+
+    @Override
+    public String toString() {
+        return "Param{" +
+                "name='" + name + '\'' +
+                ", value='" + value + '\'' +
+                '}';
+    }
 }
