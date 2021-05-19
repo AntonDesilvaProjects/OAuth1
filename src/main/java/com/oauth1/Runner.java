@@ -4,7 +4,6 @@ import com.github.scribejava.apis.TwitterApi;
 import com.github.scribejava.core.builder.ServiceBuilder;
 import com.github.scribejava.core.model.*;
 import com.github.scribejava.core.oauth.OAuth10aService;
-import com.squareup.okhttp.MediaType;
 import com.squareup.okhttp.OkHttpClient;
 import com.squareup.okhttp.Request;
 import com.squareup.okhttp.RequestBody;
@@ -17,6 +16,13 @@ import java.util.Scanner;
 import java.util.concurrent.ExecutionException;
 
 public class Runner {
+
+    final static String TWITTER_CONSUMER_KEY = "";
+    final static String TWITTER_CONSUMER_SECRET = "";
+
+    final static String FLICKR_CONSUMER_KEY = "";
+    final static String FLICKR_CONSUMER_SECRET = "";
+
     public static void main(String... args) throws InterruptedException, ExecutionException, IOException {
 
 //        OAuth1Service oAuth1Service = new OAuth1Service();
@@ -33,72 +39,73 @@ public class Runner {
 //                "", null);
 //        System.out.println(header);
 
-        do3LO();
+        oauth1AuthorizationCode_flickr();
 
         //scribeJava();
     }
 
-    public static void do3LO() throws IOException {
-        OAuth1Service oAuth1Service = new OAuth1Service();
-        OkHttpClient client = new OkHttpClient();
+    public static void oauth1AuthorizationCode_twitter() throws IOException {
+        final OAuth1Service oAuth1Service = new OAuth1Service();
+        final OkHttpClient client = new OkHttpClient();
+
+        final String requestTokenUrl = "https://api.twitter.com/oauth/request_token";
+        final String authorizationUrl = "https://api.twitter.com/oauth/authorize";
+        final String accessTokenUrl = "https://api.twitter.com/oauth/access_token";
 
         HttpRequest tokenRequest = new HttpRequest();
-        tokenRequest.setHeaders(null);
-        tokenRequest.setUrl("https://api.twitter.com/oauth/request_token");
+        tokenRequest.setUrl(requestTokenUrl);
         tokenRequest.setMethod(HttpRequest.Method.POST);
 
-        String tokenRequestHeader = oAuth1Service.buildAuthorizationHeader(tokenRequest, "",
-                "",
+        String tokenRequestHeader = oAuth1Service.buildAuthorizationHeader(tokenRequest, TWITTER_CONSUMER_KEY,
+                TWITTER_CONSUMER_SECRET,
                 null,
                 null, List.of(new Param("oauth_callback", "oob")));
-        //System.out.println(tokenRequestHeader);
         Request request = new Request.Builder()
-                .url("https://api.twitter.com/oauth/request_token")
-                .post(RequestBody.create(MediaType.parse("application/json; charset=utf-8"), "{}"))
+                .url(requestTokenUrl)
+                .post(RequestBody.create(null, ""))
                 .addHeader("Authorization", tokenRequestHeader)
                 .build();
         com.squareup.okhttp.Response response = client.newCall(request).execute();
         String rawTokenResponse = response.body().string();
-        Map<String, String> tokenResponse = fromFormEncodeString(rawTokenResponse);
         System.out.println("Token Response:\n" + rawTokenResponse);
+        Map<String, String> tokenResponse = formEncodedStringToMap(rawTokenResponse);
 
-        System.out.println("Visit twitter and get verifier: " + "https://api.twitter.com/oauth/authorize?oauth_token=" + tokenResponse.get("oauth_token"));
+        System.out.println("Login to Twitter at:" + authorizationUrl + "?oauth_token=" + tokenResponse.get("oauth_token"));
+        System.out.print("Enter Verifier: ");
         final String verifier = new Scanner(System.in).nextLine();
 
         HttpRequest accessTokenRequest = new HttpRequest();
-        accessTokenRequest.setHeaders(null);
-        accessTokenRequest.setUrl("https://api.twitter.com/oauth/access_token");
+        accessTokenRequest.setUrl(accessTokenUrl);
         accessTokenRequest.setMethod(HttpRequest.Method.POST);
 
         final String token = tokenResponse.get("oauth_token");
         final String tokenSecret = tokenResponse.get("oauth_token_secret");
 
-        String accessTokenHeader = oAuth1Service.buildAuthorizationHeader(accessTokenRequest, "",
-                "",
+        String accessTokenHeader = oAuth1Service.buildAuthorizationHeader(accessTokenRequest, TWITTER_CONSUMER_KEY,
+                TWITTER_CONSUMER_SECRET,
                 token,
                 tokenSecret,
                 List.of(new Param("oauth_verifier", verifier)));
         request = new Request.Builder()
-                .url("https://api.twitter.com/oauth/access_token")
-                .post(RequestBody.create(MediaType.parse("application/json; charset=utf-8"), "{}"))
+                .url(accessTokenUrl)
+                .post(RequestBody.create(null, ""))
                 .addHeader("Authorization", accessTokenHeader)
                 .build();
         response = client.newCall(request).execute();
         String rawAccessTokenResponse = response.body().string();
         System.out.println("Access Token Response:\n" + rawAccessTokenResponse);
-        Map<String, String> accessTokenResponse = fromFormEncodeString(rawAccessTokenResponse);
+        Map<String, String> accessTokenResponse = formEncodedStringToMap(rawAccessTokenResponse);
 
 
         HttpRequest apiCall = new HttpRequest();
-        apiCall.setHeaders(null);
         apiCall.setUrl("https://api.twitter.com/1.1/account/verify_credentials.json");
         apiCall.setMethod(HttpRequest.Method.GET);
 
         final String accessToken = accessTokenResponse.get("oauth_token");
         final String accessTokenSecret = accessTokenResponse.get("oauth_token_secret");
 
-        String apiCallHeader = oAuth1Service.buildAuthorizationHeader(apiCall, "",
-                "",
+        String apiCallHeader = oAuth1Service.buildAuthorizationHeader(apiCall, TWITTER_CONSUMER_KEY,
+                TWITTER_CONSUMER_SECRET,
                 accessToken,
                 accessTokenSecret,
                 List.of());
@@ -110,10 +117,84 @@ public class Runner {
         response = client.newCall(request).execute();
         String rawApiResponse = response.body().string();
         System.out.println("API Response:\n" + rawApiResponse);
-
     }
 
-    private static Map<String, String> fromFormEncodeString(String s) {
+    public static void oauth1AuthorizationCode_flickr() throws IOException {
+        final OAuth1Service oAuth1Service = new OAuth1Service();
+        final OkHttpClient client = new OkHttpClient();
+
+        final String requestTokenUrl = "https://www.flickr.com/services/oauth/request_token";
+        final String authorizationUrl = "https://www.flickr.com/services/oauth/authorize";
+        final String accessTokenUrl = "https://www.flickr.com/services/oauth/access_token";
+
+        HttpRequest tokenRequest = new HttpRequest();
+        tokenRequest.setUrl(requestTokenUrl);
+        tokenRequest.setMethod(HttpRequest.Method.POST);
+
+        String tokenRequestHeader = oAuth1Service.buildAuthorizationHeader(tokenRequest, FLICKR_CONSUMER_KEY,
+                FLICKR_CONSUMER_SECRET,
+                null,
+                null, List.of(new Param("oauth_callback", "http://www.example.com/")));
+        Request request = new Request.Builder()
+                .url(requestTokenUrl)
+                .post(RequestBody.create(null, ""))
+                .addHeader("Authorization", tokenRequestHeader)
+                .build();
+        com.squareup.okhttp.Response response = client.newCall(request).execute();
+        String rawTokenResponse = response.body().string();
+        System.out.println("Token Response:\n" + rawTokenResponse);
+        Map<String, String> tokenResponse = formEncodedStringToMap(rawTokenResponse);
+
+        System.out.println("Login to Twitter at:" + authorizationUrl + "?oauth_token=" + tokenResponse.get("oauth_token") + "&perms=read");
+        System.out.print("Enter Verifier: ");
+        final String verifier = new Scanner(System.in).nextLine();
+
+        HttpRequest accessTokenRequest = new HttpRequest();
+        accessTokenRequest.setUrl(accessTokenUrl);
+        accessTokenRequest.setMethod(HttpRequest.Method.POST);
+
+        final String token = tokenResponse.get("oauth_token");
+        final String tokenSecret = tokenResponse.get("oauth_token_secret");
+
+        String accessTokenHeader = oAuth1Service.buildAuthorizationHeader(accessTokenRequest, FLICKR_CONSUMER_KEY,
+                FLICKR_CONSUMER_SECRET,
+                token,
+                tokenSecret,
+                List.of(new Param("oauth_verifier", verifier)));
+        request = new Request.Builder()
+                .url(accessTokenUrl)
+                .post(RequestBody.create(null, ""))
+                .addHeader("Authorization", accessTokenHeader)
+                .build();
+        response = client.newCall(request).execute();
+        String rawAccessTokenResponse = response.body().string();
+        System.out.println("Access Token Response:\n" + rawAccessTokenResponse);
+        Map<String, String> accessTokenResponse = formEncodedStringToMap(rawAccessTokenResponse);
+
+
+        final String accessToken = accessTokenResponse.get("oauth_token");
+        final String accessTokenSecret = accessTokenResponse.get("oauth_token_secret");
+
+        HttpRequest apiCall = new HttpRequest();
+        apiCall.setUrl("https://www.flickr.com/services/rest?method=flickr.test.login");
+        apiCall.setMethod(HttpRequest.Method.GET);
+
+        String apiCallHeader = oAuth1Service.buildAuthorizationHeader(apiCall, FLICKR_CONSUMER_KEY,
+                FLICKR_CONSUMER_SECRET,
+                accessToken,
+                accessTokenSecret,
+                List.of());
+        request = new Request.Builder()
+                .url("https://www.flickr.com/services/rest?method=flickr.test.login")
+                .get()
+                .addHeader("Authorization", apiCallHeader)
+                .build();
+        response = client.newCall(request).execute();
+        String rawApiResponse = response.body().string();
+        System.out.println("API Response:\n" + rawApiResponse);
+    }
+
+    private static Map<String, String> formEncodedStringToMap(String s) {
         Map<String, String> keyValues = new HashMap<>();
         String[] pairs = s.split("&");
         for (String pair : pairs) {
@@ -122,7 +203,6 @@ public class Runner {
         }
         return keyValues;
     }
-
 
     public static void scribeJava() throws IOException, ExecutionException, InterruptedException {
         final OAuth10aService service = new ServiceBuilder("")

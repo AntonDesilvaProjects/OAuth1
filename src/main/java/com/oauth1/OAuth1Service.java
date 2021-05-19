@@ -16,34 +16,47 @@ import java.util.stream.Collectors;
 
 public class OAuth1Service {
 
+    public static final String AMPERSAND = "&";
+    public static final String OAUTH_CONSUMER_KEY = "oauth_consumer_key";
+    public static final String OAUTH_NONCE = "oauth_nonce";
+    public static final String OAUTH_SIGNATURE_METHOD = "oauth_signature_method";
+    public static final String OAUTH_TIMESTAMP = "oauth_timestamp";
+    public static final String OAUTH_VERSION = "oauth_version";
+    public static final String OAUTH_TOKEN = "oauth_token";
+    public static final String HMAC_SHA_1 = "HMAC-SHA1";
+    public static final String VERSION = "1.0";
+    public static final String OAUTH_SIGNATURE = "oauth_signature";
+
     public List<Param> generateOAuthParams(HttpRequest request,
                                            String consumerKey, String consumerSecret,
                                            String token, String tokenSecret,
                                            List<Param> customParams) {
+
         // first generate the standard params
         List<Param> params = new ArrayList<>(Optional.ofNullable(customParams).orElse(new ArrayList<>()));
-        params.add(new Param("oauth_consumer_key", consumerKey));
-        params.add(new Param("oauth_nonce", UUID.randomUUID().toString()));
-        params.add(new Param("oauth_signature_method", "HMAC-SHA1"));
-        params.add(new Param("oauth_timestamp", String.valueOf(Instant.now().getEpochSecond())));
-        params.add(new Param("oauth_version", "1.0"));
+        params.add(new Param(OAUTH_CONSUMER_KEY, consumerKey));
+        params.add(new Param(OAUTH_NONCE, UUID.randomUUID().toString()));
+        params.add(new Param(OAUTH_SIGNATURE_METHOD, HMAC_SHA_1));
+        params.add(new Param(OAUTH_TIMESTAMP, String.valueOf(Instant.now().getEpochSecond())));
+        params.add(new Param(OAUTH_VERSION, VERSION));
 
         // we might not always a oauth_token(e.g. during the Request Token call) so set if available
         if (token != null) {
-            params.add(new Param("oauth_token", token));
+            params.add(new Param(OAUTH_TOKEN, token));
         }
 
         // use all of the above params to build the signature
         final String method = request.getMethod().name();
         final String url = percentEncode(getUrlWithoutQueryParams(request.getUrl()));
         final String paramString = percentEncode(generateParameterString(request, params));
-        final String baseString = method.concat("&").concat(url).concat("&").concat(paramString);
+        final String baseString = method.concat(AMPERSAND).concat(url).concat(AMPERSAND).concat(paramString);
 
-        final String secret = percentEncode(consumerSecret) + "&" + percentEncode(tokenSecret == null ? "" : tokenSecret);
+        final String secret = percentEncode(consumerSecret).concat(AMPERSAND)
+                .concat(percentEncode(tokenSecret == null ? "" : tokenSecret));
         final byte[] signatureBytes = new HmacUtils(HmacAlgorithms.HMAC_SHA_1, secret.getBytes()).hmac(baseString.getBytes());
         final String signature = Base64.getEncoder().encodeToString(signatureBytes);
 
-        params.add(new Param("oauth_signature", signature));
+        params.add(new Param(OAUTH_SIGNATURE, signature));
 
         return params;
     }
@@ -88,58 +101,6 @@ public class OAuth1Service {
                 .collect(Collectors.joining("&"));
     }
 
-    public String buildSignature(HttpRequest request, String consumerKey, String consumerSecret, String token, String tokenSecret) {
-        String baseString = generateBaseString(request, consumerKey, token);
-        String secret = percentEncode(consumerSecret) + "&" + percentEncode(tokenSecret);
-        byte[] signature = new HmacUtils(HmacAlgorithms.HMAC_SHA_1, secret.getBytes()).hmac(baseString.getBytes());
-        return Base64.getEncoder().encodeToString(signature);
-    }
-
-    private String generateBaseString(HttpRequest request, String consumerKey, String token) {
-        String method = request.getMethod().name();
-        String url = percentEncode(getUrlWithoutQueryParams(request.getUrl()));
-        String paramString = percentEncode(generateParameterString(request, consumerKey, token));
-        return method.concat("&").concat(url).concat("&").concat(paramString);
-    }
-
-    private String generateParameterString(HttpRequest request, String consumerKey, String token) {
-        // get the standard set of params that will always be there
-        List<Param> params = getStandardOAuthParams(consumerKey, token);
-
-        // extract url params
-        List<Param> queryParams = getQueryParams(request);
-        params.addAll(queryParams);
-
-        // extract any form URL encode values from body
-        List<Param> bodyParams = getBodyParams(request);
-        params.addAll(bodyParams);
-
-        // first, url encode each key-value pair
-        params = params.stream()
-                .map(param -> new Param(percentEncode(param.getName()), percentEncode(param.getValue())))
-                .collect(Collectors.toList());
-        // sort the params
-        params = params.stream().sorted().collect(Collectors.toList());
-
-        return params.stream()
-                .map(param -> param.getName() + "=" + param.getValue())
-                .collect(Collectors.joining("&"));
-    }
-
-    private List<Param> getStandardOAuthParams(String consumerKey, String token) {
-        List<Param> params = new ArrayList<>();
-        params.add(new Param("oauth_consumer_key", consumerKey));
-        params.add(new Param("oauth_nonce", "kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg"/*UUID.randomUUID().toString())*/));
-        params.add(new Param("oauth_signature_method", "HMAC-SHA1"));
-        params.add(new Param("oauth_timestamp", "1318622958" /*String.valueOf(Instant.now().getEpochSecond()))*/));
-        params.add(new Param("oauth_version", "1.0"));
-
-        if (token != null) {
-            params.add(new Param("oauth_token", token));
-        }
-
-        return params;
-    }
 
     private List<Param> getQueryParams(HttpRequest request) {
         final List<Param> params = new ArrayList<>();
@@ -202,5 +163,4 @@ public class OAuth1Service {
             throw new IllegalArgumentException("Invalid URL!");
         }
     }
-
 }
